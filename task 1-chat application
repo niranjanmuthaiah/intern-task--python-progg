@@ -1,0 +1,486 @@
+# Simple Advanced Chat Application - Perfect for IDLE!
+# Features: Multiple rooms, file sharing, emojis, message history, user simulation
+# NO EXTERNAL DEPENDENCIES NEEDED!
+
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog, scrolledtext
+import json
+import hashlib
+import base64
+import os
+import datetime
+import random
+import threading
+import time
+
+class SimpleChatApp:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Advanced Chat Application")
+        self.root.geometry("900x600")
+        self.root.configure(bg='#2c3e50')
+        
+        # User data
+        self.users = {'admin': 'admin123', 'user1': 'pass1', 'user2': 'pass2'}
+        self.current_user = None
+        self.current_room = 'general'
+        
+        # Chat data - stores messages for each room
+        self.chat_rooms = {
+            'general': [],
+            'tech': [],
+            'random': []
+        }
+        
+        # Emoji dictionary
+        self.emojis = {
+            ':)': '😊', ':D': '😃', ':(': '😢', ':P': '😛', ':-P': '😜',
+            '<3': '❤️', ':thumbsup:': '👍', ':fire:': '🔥', ':star:': '⭐',
+            ':clap:': '👏', ':wave:': '👋', ':laugh:': '😂', ':wink:': '😉',
+            ':cool:': '😎', ':heart:': '💖', ':rocket:': '🚀', ':pizza:': '🍕'
+        }
+        
+        # Bot responses for fun
+        self.bot_responses = [
+            "That's interesting! 🤔",
+            "I totally agree! 👍",
+            "Wow, never thought about it that way! 😮",
+            "Thanks for sharing! 😊",
+            "That's so cool! 🔥",
+            "Absolutely! 💯",
+            "Haha, that's funny! 😂",
+            "Great point! ⭐"
+        ]
+        
+        self.setup_login_screen()
+        
+    def setup_login_screen(self):
+        self.clear_screen()
+        
+        # Main container
+        main_container = tk.Frame(self.root, bg='#2c3e50')
+        main_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Login frame
+        login_frame = tk.Frame(main_container, bg='#34495e', padx=40, pady=40)
+        login_frame.place(relx=0.5, rely=0.5, anchor='center')
+        
+        # Title
+        title_label = tk.Label(login_frame, text="🚀 Advanced Chat App", 
+                              font=('Arial', 24, 'bold'), bg='#34495e', fg='#ecf0f1')
+        title_label.pack(pady=(0, 30))
+        
+        # Username
+        tk.Label(login_frame, text="Username:", font=('Arial', 12, 'bold'),
+                bg='#34495e', fg='#ecf0f1').pack(pady=(0, 5))
+        self.username_entry = tk.Entry(login_frame, font=('Arial', 12), width=25, 
+                                      relief=tk.FLAT, bd=10)
+        self.username_entry.pack(pady=(0, 15))
+        
+        # Password
+        tk.Label(login_frame, text="Password:", font=('Arial', 12, 'bold'),
+                bg='#34495e', fg='#ecf0f1').pack(pady=(0, 5))
+        self.password_entry = tk.Entry(login_frame, font=('Arial', 12), width=25, 
+                                      show='*', relief=tk.FLAT, bd=10)
+        self.password_entry.pack(pady=(0, 20))
+        
+        # Login button
+        login_btn = tk.Button(login_frame, text="🎯 Login", command=self.login,
+                             bg='#3498db', fg='white', font=('Arial', 14, 'bold'), 
+                             width=20, relief=tk.FLAT, bd=0, pady=10)
+        login_btn.pack(pady=(0, 10))
+        
+        # Quick login buttons
+        quick_frame = tk.Frame(login_frame, bg='#34495e')
+        quick_frame.pack(pady=10)
+        
+        tk.Label(quick_frame, text="Quick Login:", font=('Arial', 10),
+                bg='#34495e', fg='#bdc3c7').pack()
+        
+        quick_btn_frame = tk.Frame(quick_frame, bg='#34495e')
+        quick_btn_frame.pack(pady=5)
+        
+        for user in ['admin', 'user1', 'user2']:
+            btn = tk.Button(quick_btn_frame, text=user, 
+                           command=lambda u=user: self.quick_login(u),
+                           bg='#2ecc71', fg='white', font=('Arial', 10), 
+                           width=8, relief=tk.FLAT)
+            btn.pack(side=tk.LEFT, padx=2)
+        
+        # Instructions
+        instructions = tk.Label(login_frame, 
+                               text="💡 Use quick login buttons or enter any username/password",
+                               font=('Arial', 10), bg='#34495e', fg='#95a5a6', wraplength=300)
+        instructions.pack(pady=(20, 0))
+        
+        # Bind Enter key
+        self.root.bind('<Return>', lambda e: self.login())
+        
+    def setup_chat_screen(self):
+        self.clear_screen()
+        
+        # Main container
+        main_frame = tk.Frame(self.root, bg='#2c3e50')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Top frame - User info and controls
+        top_frame = tk.Frame(main_frame, bg='#34495e', height=70)
+        top_frame.pack(fill=tk.X, pady=(0, 10))
+        top_frame.pack_propagate(False)
+        
+        # Left side - User info
+        user_frame = tk.Frame(top_frame, bg='#34495e')
+        user_frame.pack(side=tk.LEFT, fill=tk.Y, padx=20)
+        
+        tk.Label(user_frame, text=f"👤 {self.current_user}", 
+                font=('Arial', 16, 'bold'), bg='#34495e', fg='#ecf0f1').pack(anchor='w')
+        tk.Label(user_frame, text="🟢 Online", 
+                font=('Arial', 10), bg='#34495e', fg='#2ecc71').pack(anchor='w')
+        
+        # Right side - Room selection and controls
+        controls_frame = tk.Frame(top_frame, bg='#34495e')
+        controls_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=20)
+        
+        # Room selection
+        room_frame = tk.Frame(controls_frame, bg='#34495e')
+        room_frame.pack(side=tk.RIGHT, padx=10)
+        
+        tk.Label(room_frame, text="🏠 Room:", font=('Arial', 12, 'bold'),
+                bg='#34495e', fg='#ecf0f1').pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.room_var = tk.StringVar(value='general')
+        room_combo = ttk.Combobox(room_frame, textvariable=self.room_var, 
+                                 values=['general', 'tech', 'random'], 
+                                 state='readonly', width=15)
+        room_combo.pack(side=tk.LEFT)
+        room_combo.bind('<<ComboboxSelected>>', self.change_room)
+        
+        # Logout button
+        logout_btn = tk.Button(controls_frame, text="🚪 Logout", command=self.logout,
+                              bg='#e74c3c', fg='white', font=('Arial', 10, 'bold'),
+                              relief=tk.FLAT, padx=10)
+        logout_btn.pack(side=tk.RIGHT, padx=10)
+        
+        # Middle frame - Chat display
+        chat_frame = tk.Frame(main_frame, bg='#2c3e50')
+        chat_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.chat_display = scrolledtext.ScrolledText(
+            chat_frame, wrap=tk.WORD, state=tk.DISABLED,
+            bg='#ecf0f1', fg='#2c3e50', font=('Arial', 11),
+            relief=tk.FLAT, bd=0, padx=10, pady=10
+        )
+        self.chat_display.pack(fill=tk.BOTH, expand=True)
+        
+        # Bottom frame - Message input
+        bottom_frame = tk.Frame(main_frame, bg='#2c3e50', height=120)
+        bottom_frame.pack(fill=tk.X, pady=(10, 0))
+        bottom_frame.pack_propagate(False)
+        
+        # Input area
+        input_frame = tk.Frame(bottom_frame, bg='#34495e', relief=tk.FLAT, bd=1)
+        input_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.message_entry = tk.Text(input_frame, height=3, wrap=tk.WORD, 
+                                    font=('Arial', 12), relief=tk.FLAT, bd=0,
+                                    bg='#ecf0f1', fg='#2c3e50')
+        self.message_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Buttons frame
+        button_frame = tk.Frame(input_frame, bg='#34495e')
+        button_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10))
+        
+        # Send button
+        send_btn = tk.Button(button_frame, text="📤 Send", command=self.send_message,
+                            bg='#3498db', fg='white', font=('Arial', 12, 'bold'),
+                            relief=tk.FLAT, width=10, pady=5)
+        send_btn.pack(pady=2)
+        
+        # File button
+        file_btn = tk.Button(button_frame, text="📁 File", command=self.send_file,
+                            bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
+                            relief=tk.FLAT, width=10, pady=5)
+        file_btn.pack(pady=2)
+        
+        # Emoji button
+        emoji_btn = tk.Button(button_frame, text="😊 Emoji", command=self.show_emoji_panel,
+                             bg='#f39c12', fg='white', font=('Arial', 12, 'bold'),
+                             relief=tk.FLAT, width=10, pady=5)
+        emoji_btn.pack(pady=2)
+        
+        # Bind Enter key for sending messages
+        self.message_entry.bind('<Return>', self.send_message_key)
+        
+        # Load current room messages
+        self.load_room_messages()
+        
+        # Start bot activity
+        self.start_bot_activity()
+        
+    def clear_screen(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+    
+    def quick_login(self, username):
+        self.username_entry.delete(0, tk.END)
+        self.username_entry.insert(0, username)
+        self.password_entry.delete(0, tk.END)
+        self.password_entry.insert(0, self.users.get(username, 'password'))
+        self.login()
+    
+    def login(self):
+        username = self.username_entry.get().strip()
+        password = self.password_entry.get().strip()
+        
+        if not username:
+            messagebox.showwarning("Input Error", "Please enter a username")
+            return
+        
+        # Simple authentication (accept any username/password for demo)
+        if username in self.users and self.users[username] == password:
+            self.current_user = username
+        else:
+            # Allow any new username/password combination
+            self.current_user = username
+            self.users[username] = password
+        
+        self.setup_chat_screen()
+        self.add_system_message(f"🎉 Welcome {self.current_user}! You joined the {self.current_room} room.")
+    
+    def logout(self):
+        self.current_user = None
+        self.setup_login_screen()
+    
+    def change_room(self, event=None):
+        new_room = self.room_var.get()
+        if new_room != self.current_room:
+            self.add_system_message(f"📍 {self.current_user} moved to {new_room} room")
+            self.current_room = new_room
+            self.load_room_messages()
+    
+    def send_message(self):
+        message = self.message_entry.get("1.0", tk.END).strip()
+        if message:
+            # Replace emoji codes with emojis
+            for code, emoji in self.emojis.items():
+                message = message.replace(code, emoji)
+            
+            # Add message to current room
+            timestamp = datetime.datetime.now().strftime("%H:%M")
+            self.chat_rooms[self.current_room].append({
+                'username': self.current_user,
+                'message': message,
+                'timestamp': timestamp,
+                'type': 'message'
+            })
+            
+            # Display message
+            self.display_message(self.current_user, message, timestamp)
+            
+            # Clear input
+            self.message_entry.delete("1.0", tk.END)
+            
+            # Trigger bot response occasionally
+            if random.random() < 0.3:  # 30% chance
+                self.schedule_bot_response()
+    
+    def send_message_key(self, event):
+        if event.state & 0x4:  # Ctrl+Enter for new line
+            return
+        self.send_message()
+        return "break"
+    
+    def send_file(self):
+        file_path = filedialog.askopenfilename(
+            title="Select file to share",
+            filetypes=[
+                ("Images", "*.png *.jpg *.jpeg *.gif *.bmp"),
+                ("Documents", "*.txt *.pdf *.doc *.docx"),
+                ("All files", "*.*")
+            ]
+        )
+        
+        if file_path:
+            filename = os.path.basename(file_path)
+            timestamp = datetime.datetime.now().strftime("%H:%M")
+            
+            # Add to chat room
+            self.chat_rooms[self.current_room].append({
+                'username': self.current_user,
+                'message': f"📎 Shared file: {filename}",
+                'timestamp': timestamp,
+                'type': 'file',
+                'file_path': file_path
+            })
+            
+            # Display file message
+            self.display_file_message(self.current_user, filename, timestamp)
+            
+            # Show success message
+            messagebox.showinfo("File Shared", f"File '{filename}' shared successfully!")
+    
+    def show_emoji_panel(self):
+        # Create emoji panel window
+        emoji_window = tk.Toplevel(self.root)
+        emoji_window.title("Emoji Panel")
+        emoji_window.geometry("400x300")
+        emoji_window.configure(bg='#34495e')
+        emoji_window.resizable(False, False)
+        
+        # Title
+        tk.Label(emoji_window, text="😊 Click to use emojis", 
+                font=('Arial', 14, 'bold'), bg='#34495e', fg='#ecf0f1').pack(pady=10)
+        
+        # Emoji grid
+        emoji_frame = tk.Frame(emoji_window, bg='#34495e')
+        emoji_frame.pack(expand=True, fill=tk.BOTH, padx=20, pady=10)
+        
+        # Group emojis by category
+        emoji_categories = {
+            'Faces': [':)', ':D', ':(', ':P', ':-P', ':laugh:', ':wink:', ':cool:'],
+            'Hearts': ['<3', ':heart:'],
+            'Actions': [':thumbsup:', ':clap:', ':wave:'],
+            'Objects': [':fire:', ':star:', ':rocket:', ':pizza:']
+        }
+        
+        row = 0
+        for category, emojis in emoji_categories.items():
+            # Category label
+            tk.Label(emoji_frame, text=category, font=('Arial', 12, 'bold'),
+                    bg='#34495e', fg='#ecf0f1').grid(row=row, column=0, columnspan=4, 
+                                                    sticky='w', pady=(10, 5))
+            row += 1
+            
+            # Emoji buttons
+            col = 0
+            for emoji_code in emojis:
+                emoji_char = self.emojis[emoji_code]
+                btn = tk.Button(emoji_frame, text=f"{emoji_char}\n{emoji_code}",
+                               command=lambda code=emoji_code: self.insert_emoji(code, emoji_window),
+                               bg='#3498db', fg='white', font=('Arial', 10),
+                               width=8, height=2, relief=tk.FLAT)
+                btn.grid(row=row, column=col, padx=2, pady=2)
+                col += 1
+                if col >= 4:
+                    col = 0
+                    row += 1
+            
+            if col > 0:
+                row += 1
+    
+    def insert_emoji(self, emoji_code, window):
+        self.message_entry.insert(tk.INSERT, emoji_code + " ")
+        window.destroy()
+        self.message_entry.focus()
+    
+    def load_room_messages(self):
+        self.chat_display.configure(state=tk.NORMAL)
+        self.chat_display.delete(1.0, tk.END)
+        
+        # Display room header
+        self.chat_display.insert(tk.END, f"🏠 Welcome to #{self.current_room} room! 🏠\n\n", "header")
+        
+        # Load messages for current room
+        for msg in self.chat_rooms[self.current_room]:
+            if msg['type'] == 'file':
+                self.display_file_message(msg['username'], msg['message'], msg['timestamp'])
+            elif msg['type'] == 'system':
+                self.display_system_message(msg['message'])
+            else:
+                self.display_message(msg['username'], msg['message'], msg['timestamp'])
+        
+        self.chat_display.configure(state=tk.DISABLED)
+        self.chat_display.see(tk.END)
+    
+    def display_message(self, username, message, timestamp):
+        self.chat_display.configure(state=tk.NORMAL)
+        
+        # Color code based on user
+        if username == self.current_user:
+            user_color = "#3498db"
+        elif username == "ChatBot":
+            user_color = "#e74c3c"
+        else:
+            user_color = "#2ecc71"
+        
+        # Insert timestamp and username
+        self.chat_display.insert(tk.END, f"[{timestamp}] ", "timestamp")
+        self.chat_display.insert(tk.END, f"{username}: ", "username")
+        self.chat_display.insert(tk.END, f"{message}\n", "message")
+        
+        # Configure tags for styling
+        self.chat_display.tag_config("timestamp", foreground="#7f8c8d", font=('Arial', 9))
+        self.chat_display.tag_config("username", foreground=user_color, font=('Arial', 11, 'bold'))
+        self.chat_display.tag_config("message", foreground="#2c3e50", font=('Arial', 11))
+        
+        self.chat_display.configure(state=tk.DISABLED)
+        self.chat_display.see(tk.END)
+    
+    def display_file_message(self, username, filename, timestamp):
+        self.chat_display.configure(state=tk.NORMAL)
+        
+        user_color = "#3498db" if username == self.current_user else "#2ecc71"
+        
+        self.chat_display.insert(tk.END, f"[{timestamp}] ", "timestamp")
+        self.chat_display.insert(tk.END, f"{username}: ", "username")
+        self.chat_display.insert(tk.END, f"📎 {filename}\n", "file")
+        
+        self.chat_display.tag_config("file", foreground="#e74c3c", font=('Arial', 11, 'bold'))
+        
+        self.chat_display.configure(state=tk.DISABLED)
+        self.chat_display.see(tk.END)
+    
+    def display_system_message(self, message):
+        self.chat_display.configure(state=tk.NORMAL)
+        self.chat_display.insert(tk.END, f"🤖 {message}\n", "system")
+        self.chat_display.tag_config("system", foreground="#9b59b6", font=('Arial', 10, 'italic'))
+        self.chat_display.configure(state=tk.DISABLED)
+        self.chat_display.see(tk.END)
+    
+    def add_system_message(self, message):
+        timestamp = datetime.datetime.now().strftime("%H:%M")
+        self.chat_rooms[self.current_room].append({
+            'username': 'system',
+            'message': message,
+            'timestamp': timestamp,
+            'type': 'system'
+        })
+        self.display_system_message(message)
+    
+    def schedule_bot_response(self):
+        # Schedule bot response after 2-5 seconds
+        delay = random.uniform(2, 5)
+        threading.Timer(delay, self.bot_response).start()
+    
+    def bot_response(self):
+        if self.current_user:  # Only if user is still logged in
+            response = random.choice(self.bot_responses)
+            timestamp = datetime.datetime.now().strftime("%H:%M")
+            
+            self.chat_rooms[self.current_room].append({
+                'username': 'ChatBot',
+                'message': response,
+                'timestamp': timestamp,
+                'type': 'message'
+            })
+            
+            # Use after() to safely update GUI from thread
+            self.root.after(0, lambda: self.display_message('ChatBot', response, timestamp))
+    
+    def start_bot_activity(self):
+        # Occasionally send random messages
+        def random_activity():
+            while self.current_user:
+                time.sleep(random.uniform(30, 60))  # Wait 30-60 seconds
+                if random.random() < 0.2:  # 20% chance
+                    self.bot_response()
+        
+        threading.Thread(target=random_activity, daemon=True).start()
+    
+    def run(self):
+        self.root.mainloop()
+
+# Run the application
+if __name__ == "__main__":
+    app = SimpleChatApp()
+    app.run()
